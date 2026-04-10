@@ -101,30 +101,21 @@
              
 #         n_envs = len(observations["state.base_position"])
 
-#         action_dict = defaultdict(list)
+#         for k, v in observations.items():
+#             print_green(k)
+#             print_green(v.shape if hasattr(v, 'shape') else type(v))
 
-#         # for k, v in observations.items():
-#         #     print_green(k)
-#         #     print_green(v.shape if hasattr(v, 'shape') else type(v))
-
+#         batch_elements = []
+        
 #         for i in range(n_envs):
 #             # 取出第 i 个环境、最新一帧 (-1) 的图像
-#             # 注意：Gr00t 的图像 Key 是 video.res256_...
-#             # Mujoco 原始图像通常是倒的，依然建议翻转 [::-1, ::-1]
-            
-#             # 映射关系：
-#             # cam_high       <- wrist_0
-#             # cam_left_wrist <- side_0
-#             # cam_right_wrist<- side_1
-            
 #             img_wrist_raw = observations["video.res256_image_wrist_0"][i, -1]
 #             img_left_raw  = observations["video.res256_image_side_0"][i, -1]
 #             img_right_raw = observations["video.res256_image_side_1"][i, -1]
 
-#             # 处理：Flip -> Resize -> Transpose(CHW) -> Uint8
-#             img_wrist = self._process_image(img_wrist_raw[::-1, ::-1])
-#             img_left  = self._process_image(img_left_raw[::-1, ::-1])
-#             img_right = self._process_image(img_right_raw[::-1, ::-1])
+#             img_wrist = self._process_image(img_wrist_raw)      # 不需要翻转！
+#             img_left  = self._process_image(img_left_raw)
+#             img_right = self._process_image(img_right_raw)
 
 #             state_parts = [
 #                 observations["state.base_position"][i, -1],                # (3,)
@@ -142,18 +133,7 @@
 #             ]
             
 #             state_vec = np.concatenate(state_parts, axis=-1)
-            
 #             task_description = observations["annotation.human.action.task_description"][i]
-
-#             # element = {
-#             #     "images": {
-#             #         "cam_high": img_wrist,
-#             #         "cam_left_wrist": img_left,
-#             #         "cam_right_wrist": img_right
-#             #     },
-#             #     "state": state_vec,
-#             #     "prompt": task_description,
-#             # }
 
 #             element = {
 #                 "cam_high": img_wrist,
@@ -162,21 +142,25 @@
 #                 "state": state_vec,
 #                 "prompt": task_description,
 #             }
-
-#             # 推理
-#             output = self.client.infer(element)
-#             action_chunk = output["actions"]
-#             # print_blue(action_chunk.shape)
-
-#             steps_to_take = min(len(action_chunk), self.replan_steps)
             
-#             action_dict["action.base_motion"].append(action_chunk[:steps_to_take, 0:4])
-#             action_dict["action.control_mode"].append(action_chunk[:steps_to_take, 4:5])
-#             action_dict["action.end_effector_position"].append(action_chunk[:steps_to_take, 5:8])
-#             action_dict["action.end_effector_rotation"].append(action_chunk[:steps_to_take, 8:11])
-#             action_dict["action.gripper_close"].append(action_chunk[:steps_to_take, 11:12])
+#             batch_elements.append(element)
 
-#         final_actions = {k: np.array(v) for k, v in action_dict.items()}
+#         # 推理
+#         output = self.client.infer(batch_elements)
+#         action_chunk = output["actions"]
+
+#         print_blue("action_chunk")
+#         print_blue(action_chunk.shape)
+
+#         steps_to_take = min(len(action_chunk), self.replan_steps)
+        
+#         final_actions = dict()
+#         final_actions["action.base_motion"] = action_chunk[:, :steps_to_take, 0:4]
+#         final_actions["action.control_mode"] = action_chunk[:, :steps_to_take, 4:5]
+#         final_actions["action.end_effector_position"] = action_chunk[:, :steps_to_take, 5:8]
+#         final_actions["action.end_effector_rotation"] = action_chunk[:, :steps_to_take, 8:11]
+#         final_actions["action.gripper_close"] = action_chunk[:, :steps_to_take, 11:12]
+        
 #         # print_green(final_actions)
 #         return final_actions, {}
 
@@ -390,7 +374,7 @@
 #             video_dir=Path(wrapper_configs.video.video_dir),
 #             steps_per_render=wrapper_configs.video.steps_per_render,
 #             max_episode_steps=wrapper_configs.video.max_episode_steps,
-#             overlay_text=False,
+#             overlay_text=wrapper_configs.video.overlay_text,
 #         )
 
 #     env = MultiStepWrapper(
@@ -458,9 +442,6 @@
 
 #     # Initial reset
 #     observations, _ = env.reset()
-    
-#     # print_blue("env.action_space")
-#     # print_blue(env.action_space)
     
 #     policy.reset()
 #     i = 0
@@ -695,11 +676,11 @@
     
 #     import os
 #     os.makedirs("/pi/robocasa_eval_results", exist_ok=True)
-#     file_name = "/pi/robocasa_eval_results/0109.txt"
+#     file_name = "/pi/robocasa_eval_results/0210.txt"
 #     with open (file_name, "a") as f:
 #         f.write(
-#             f"task_name: {results[0]}\n"+
-#             f"n_episodes: {args.n_episodes}\n"+
-#             f"n_envs: {args.n_envs}\n"+
+#             f"task_name: {results[0]}\t"+
+#             f"n_episodes: {args.n_episodes}\t"+
+#             f"n_envs: {args.n_envs}\t"+
 #             f"success_rate: {np.mean(results[1])}\n"
 #         )
