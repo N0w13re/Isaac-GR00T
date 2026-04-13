@@ -1,4 +1,4 @@
-# source /pi/Isaac-GR00T/gr00t/eval/sim/robocasa/robocasa_uv/.venv/bin/activate
+# source Isaac-GR00T/gr00t/eval/sim/robocasa/robocasa_uv/.venv/bin/activate
 import argparse
 import logging
 from pathlib import Path
@@ -13,7 +13,10 @@ from openpi_client import image_tools
 
 # ================= 配置区域 =================
 # 对应你的 tree 结构
-BASE_DIR = "/pi/open_loop_data/libero"
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+root_dir = os.path.abspath(os.path.join(current_dir, "..", "..", "..", ".."))
+BASE_DIR = os.path.join(root_dir, "open_loop_data")
 DEFAULT_PARQUET = f"{BASE_DIR}/episode_000000.parquet"
 DEFAULT_VIDEO_WRIST = f"{BASE_DIR}/wrist/episode_000000_h264.mp4"
 DEFAULT_VIDEO_LEFT  = f"{BASE_DIR}/left/episode_000000.mp4"
@@ -188,7 +191,7 @@ def run_eval(args):
         # preds_sliced = preds[:, 5:12]
         # gts_sliced   = gts[:, 5:12]
 
-        save_path = f"/pi/replay_dim5-12.png"
+        save_path = f"{root_dir}/replay_dim5-12.png"
         # plot_results(gts_sliced, preds_sliced, save_path)
         plot_results(gts, preds, save_path)
     else:

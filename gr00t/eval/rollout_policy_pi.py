@@ -22,6 +22,9 @@ import math
 import collections
 import pandas as pd
 
+current_dir = os.path.dirname(os.path.abspath(__file__))
+root_dir = os.path.abspath(os.path.join(current_dir, "..", "..", "..", ".."))
+
 def load_parquet_actions(path):
     print(f"📼 Loading actions from: {path}")
     df = pd.read_parquet(path)
@@ -501,7 +504,7 @@ def create_gr00t_sim_policy(
 ) -> BasePolicy:
     from gr00t.policy.gr00t_policy import Gr00tPolicy, Gr00tSimPolicyWrapper
 
-    # replay_path = "/pi/episode_000000.parquet"
+    # replay_path = f"{root_dir}/episode_000000.parquet"
     # if replay_path:
     #     return ParquetReplayPolicy(replay_path, replan_steps=n_action_steps)
 
@@ -536,7 +539,7 @@ def run_gr00t_sim_policy(
 ):
     embodiment_tag = get_embodiment_tag_from_env_name(env_name)
 
-    video_dir = f"/pi/robocasa_eval_results/saved_videos/{file_name}/sim_eval_videos_{env_name}_ac{n_action_steps}_{uuid.uuid4()}"
+    video_dir = f"{root_dir}/robocasa_eval_results/saved_videos/{file_name}/sim_eval_videos_{env_name}_ac{n_action_steps}_{uuid.uuid4()}"
 
     if env_name.startswith("sim_behavior_r1_pro"):
         # BEHAVIOR sim will crash if decord is imported in video_utils.py
@@ -601,9 +604,9 @@ if __name__ == "__main__":
         '  - To use model path: set --model_path, and set --policy_client_host "" (and leave --policy_client_port unset)'
     )
     
-    os.makedirs("/pi/robocasa_eval_results", exist_ok=True)
+    os.makedirs(f"{root_dir}/robocasa_eval_results", exist_ok=True)
     file_time = time.strftime("%m%d", time.localtime())
-    file_name = f"/pi/robocasa_eval_results/{file_time}_step{args.n_action_steps}_max{args.max_episode_steps}.txt"
+    file_name = f"{root_dir}/robocasa_eval_results/{file_time}_step{args.n_action_steps}_max{args.max_episode_steps}.txt"
 
     cur_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     with open(file_name, "a") as f:
