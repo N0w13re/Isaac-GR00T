@@ -261,6 +261,14 @@ def get_gym_env(env_name: str, env_idx: int, total_n_envs: int):
     return env_fn()
 
 
+def create_eval_env_on_gpu(
+    gpu_id: int, env_name: str, env_idx: int, total_n_envs: int, wrapper_configs: WrapperConfigs
+) -> gym.Env:
+    """Set CUDA_VISIBLE_DEVICES before creating the env (called in spawned subprocess)."""
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+    return create_eval_env(env_name, env_idx, total_n_envs, wrapper_configs)
+
+
 def create_eval_env(
     env_name: str, env_idx: int, total_n_envs: int, wrapper_configs: WrapperConfigs
 ) -> gym.Env:
@@ -315,6 +323,7 @@ def run_rollout_gymnasium_policy(
     wrapper_configs: WrapperConfigs,
     n_episodes: int = 10,
     n_envs: int = 1,
+    gpu_ids: list[int] | None = None,
 ) -> Any:
     """Run policy rollouts in parallel environments.
 
@@ -332,16 +341,26 @@ def run_rollout_gymnasium_policy(
     n_episodes = max(n_episodes, n_envs)
     print(f"Running collecting {n_episodes} episodes for {env_name} with {n_envs} vec envs")
 
-    env_fns = [
-        partial(
-            create_eval_env,
-            env_idx=idx,
-            env_name=env_name,
-            total_n_envs=n_envs,
-            wrapper_configs=wrapper_configs,
-        )
-        for idx in range(n_envs)
-    ]
+    env_fns = []
+    for idx in range(n_envs):
+        if gpu_ids:
+            gpu_id = gpu_ids[idx % len(gpu_ids)]
+            env_fns.append(partial(
+                create_eval_env_on_gpu,
+                gpu_id=gpu_id,
+                env_idx=idx,
+                env_name=env_name,
+                total_n_envs=n_envs,
+                wrapper_configs=wrapper_configs,
+            ))
+        else:
+            env_fns.append(partial(
+                create_eval_env,
+                env_idx=idx,
+                env_name=env_name,
+                total_n_envs=n_envs,
+                wrapper_configs=wrapper_configs,
+            ))
 
     if n_envs == 1:
         env = gym.vector.SyncVectorEnv(env_fns)
@@ -512,7 +531,8 @@ def run_gr00t_sim_policy(
     policy_client_port: int | None = None,
     n_envs: int = 8,
     n_action_steps: int = 8,
-    file_name: int | None = None
+    file_name: int | None = None,
+    gpu_ids: list[int] | None = None,
 ):
     embodiment_tag = get_embodiment_tag_from_env_name(env_name)
 
@@ -543,6 +563,7 @@ def run_gr00t_sim_policy(
         wrapper_configs=wrapper_configs,
         n_episodes=n_episodes,
         n_envs=n_envs,
+        gpu_ids=gpu_ids,
     )
     print("Video saved to: ", wrapper_configs.video.video_dir)
     return results
@@ -568,6 +589,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--n_envs", type=int, default=8)
     parser.add_argument("--n_action_steps", type=int, default=8)
+    parser.add_argument("--gpu_ids", type=int, nargs="+", default=None,
+        help="GPU IDs for env rendering. Envs are distributed round-robin across these GPUs.")
 
     args = parser.parse_args()
 
@@ -605,6 +628,7 @@ if __name__ == "__main__":
             n_envs=args.n_envs,
             n_action_steps=args.n_action_steps,
             file_name=file_name.split('/')[-1].split('.')[0],
+            gpu_ids=args.gpu_ids,
         )
     
         sr = np.round(np.mean(results[1]), 3)
