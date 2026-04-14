@@ -23,7 +23,7 @@ import collections
 import pandas as pd
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
-root_dir = os.path.abspath(os.path.join(current_dir, "..", "..", "..", ".."))
+root_dir = os.path.abspath(os.path.join(current_dir, "..", ".."))
 
 def load_parquet_actions(path):
     print(f"📼 Loading actions from: {path}")

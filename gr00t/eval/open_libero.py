@@ -15,7 +15,7 @@ from openpi_client import image_tools
 # 对应你的 tree 结构
 import os
 current_dir = os.path.dirname(os.path.abspath(__file__))
-root_dir = os.path.abspath(os.path.join(current_dir, "..", "..", "..", ".."))
+root_dir = os.path.abspath(os.path.join(current_dir, "..", ".."))
 BASE_DIR = os.path.join(root_dir, "open_loop_data")
 DEFAULT_PARQUET = f"{BASE_DIR}/episode_000000.parquet"
 DEFAULT_VIDEO_WRIST = f"{BASE_DIR}/wrist/episode_000000_h264.mp4"
