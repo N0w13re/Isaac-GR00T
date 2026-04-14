@@ -104,63 +104,40 @@ class OpenPIPolicyAdapter(BasePolicy):
         if "state.base_position" not in observations:
              print("Available keys:", observations.keys())
              raise ValueError("Missing 'state.base_position' in observations")
-             
+
         n_envs = len(observations["state.base_position"])
 
         action_dict = defaultdict(list)
 
-        # for k, v in observations.items():
-        #     print_green(k)
-        #     print_green(v.shape if hasattr(v, 'shape') else type(v))
-
+        # Build batch of observations for all environments.
+        batch_elements = []
         for i in range(n_envs):
-            # 取出第 i 个环境、最新一帧 (-1) 的图像
-            # 映射关系：
-            # cam_high       <- wrist_0
-            # cam_left_wrist <- side_0
-            # cam_right_wrist<- side_1
-            
             img_wrist_raw = observations["video.res256_image_wrist_0"][i, -1]
             img_left_raw  = observations["video.res256_image_side_0"][i, -1]
             img_right_raw = observations["video.res256_image_side_1"][i, -1]
 
-            # 处理：Flip -> Resize -> Transpose(CHW) -> Uint8       -> 实际上不需要翻转！
-            # img_wrist = self._process_image(img_wrist_raw[::-1, ::-1])
-            # img_left  = self._process_image(img_left_raw[::-1, ::-1])
-            # img_right = self._process_image(img_right_raw[::-1, ::-1])
-            
             img_wrist = self._process_image(img_wrist_raw)
             img_left  = self._process_image(img_left_raw)
             img_right = self._process_image(img_right_raw)
 
             state_parts = [
-                observations["state.base_position"][i, -1],                # (3,)
-                observations["state.base_rotation"][i, -1],                # (4,)
-                observations["state.end_effector_position_absolute"][i, -1], # (3,)
-                observations["state.end_effector_position_relative"][i, -1], # (3,)
-                observations["state.end_effector_rotation_absolute"][i, -1], # (4,)
-                observations["state.end_effector_rotation_relative"][i, -1], # (4,)
-                observations["state.gripper_qpos"][i, -1],                 # (2,)
-                observations["state.gripper_qvel"][i, -1],                 # (2,)
-                observations["state.joint_position"][i, -1],               # (7,)
-                observations["state.joint_position_cos"][i, -1],                # (7,)
-                observations["state.joint_position_sin"][i, -1],                # (7,)
-                observations["state.joint_velocity"][i, -1],               # (7,)
+                observations["state.base_position"][i, -1],
+                observations["state.base_rotation"][i, -1],
+                observations["state.end_effector_position_absolute"][i, -1],
+                observations["state.end_effector_position_relative"][i, -1],
+                observations["state.end_effector_rotation_absolute"][i, -1],
+                observations["state.end_effector_rotation_relative"][i, -1],
+                observations["state.gripper_qpos"][i, -1],
+                observations["state.gripper_qvel"][i, -1],
+                observations["state.joint_position"][i, -1],
+                observations["state.joint_position_cos"][i, -1],
+                observations["state.joint_position_sin"][i, -1],
+                observations["state.joint_velocity"][i, -1],
             ]
-            
+
             state_vec = np.concatenate(state_parts, axis=-1)
-            
             task_description = observations["annotation.human.action.task_description"][i]
 
-            # element = {
-            #     "cam_high": img_wrist,
-            #     "cam_left_wrist": img_left,
-            #     "cam_right_wrist": img_right,
-            #     "state": state_vec,
-            #     "prompt": task_description,
-            # }
-            
-            
             element = {
                 "images": {
                     "cam_high": img_wrist,
@@ -170,14 +147,15 @@ class OpenPIPolicyAdapter(BasePolicy):
                 "state": state_vec,
                 "prompt": task_description,
             }
+            batch_elements.append(element)
 
-            # 推理
-            output = self.client.infer(element)
+        # Single batch inference call instead of N sequential calls.
+        outputs = self.client.batch_infer(batch_elements)
+
+        for i, output in enumerate(outputs):
             action_chunk = output["actions"]
-            # print_blue(action_chunk.shape)
-
             steps_to_take = min(len(action_chunk), self.replan_steps)
-            
+
             action_dict["action.base_motion"].append(action_chunk[:steps_to_take, 0:4])
             action_dict["action.control_mode"].append(action_chunk[:steps_to_take, 4:5])
             action_dict["action.end_effector_position"].append(action_chunk[:steps_to_take, 5:8])
@@ -185,7 +163,6 @@ class OpenPIPolicyAdapter(BasePolicy):
             action_dict["action.gripper_close"].append(action_chunk[:steps_to_take, 11:12])
 
         final_actions = {k: np.array(v) for k, v in action_dict.items()}
-        # print_green(final_actions)
         return final_actions, {}
 
     def _process_image(self, img_array):
@@ -617,7 +594,6 @@ if __name__ == "__main__":
     
     for current_env in args.env_name:
         task_name = (current_env.split('/')[-1]).split('_')[0]
-        print(f"Running task: {task_name}")
 
         results = run_gr00t_sim_policy(
             env_name=current_env,
@@ -644,5 +620,3 @@ if __name__ == "__main__":
                 f"success_rate: {sr}\n"+
                 "============================\n"
             )
-
-        time.sleep(300)
