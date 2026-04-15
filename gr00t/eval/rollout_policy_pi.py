@@ -533,13 +533,16 @@ def run_gr00t_sim_policy(
     n_action_steps: int = 8,
     file_name: int | None = None,
     gpu_ids: list[int] | None = None,
+    save_video: bool = True,
 ):
     embodiment_tag = get_embodiment_tag_from_env_name(env_name)
 
-    video_dir = f"{root_dir}/robocasa_eval_results/saved_videos/{file_name}/sim_eval_videos_{env_name}_ac{n_action_steps}_{uuid.uuid4()}"
+    if save_video and file_name is not None:
+        video_dir = f"{file_name}/saved_videos/sim_eval_videos_{env_name}_ac{n_action_steps}_{uuid.uuid4()}"
+    else:
+        video_dir = None
 
     if env_name.startswith("sim_behavior_r1_pro"):
-        # BEHAVIOR sim will crash if decord is imported in video_utils.py
         video_dir = None
     wrapper_configs = WrapperConfigs(
         video=VideoConfig(
@@ -565,7 +568,8 @@ def run_gr00t_sim_policy(
         n_envs=n_envs,
         gpu_ids=gpu_ids,
     )
-    print("Video saved to: ", wrapper_configs.video.video_dir)
+    if video_dir:
+        print("Video saved to: ", wrapper_configs.video.video_dir)
     return results
 
 
@@ -591,6 +595,10 @@ if __name__ == "__main__":
     parser.add_argument("--n_action_steps", type=int, default=8)
     parser.add_argument("--gpu_ids", type=int, nargs="+", default=None,
         help="GPU IDs for env rendering. Envs are distributed round-robin across these GPUs.")
+    parser.add_argument("--num_clients", type=int, default=1)
+    parser.add_argument("--client_id", type=int, default=0)
+    parser.add_argument("--save_dir", type=str, default="",
+        help="Directory to save _agg_client*.txt; only client 0 saves video here")
 
     args = parser.parse_args()
 
@@ -603,44 +611,50 @@ if __name__ == "__main__":
         '  - To use policy client: set --policy_client_host and --policy_client_port, and set --model_path ""\n'
         '  - To use model path: set --model_path, and set --policy_client_host "" (and leave --policy_client_port unset)'
     )
-    
-    os.makedirs(f"{root_dir}/robocasa_eval_results", exist_ok=True)
-    file_time = time.strftime("%m%d", time.localtime())
-    file_name = f"{root_dir}/robocasa_eval_results/{file_time}_step{args.n_action_steps}_max{args.max_episode_steps}.txt"
 
-    cur_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    with open(file_name, "a") as f:
-        f.write(f"start time: {cur_time}\n" +
-                f"n_episodes: {args.n_episodes}\n" + 
-                f"n_action_steps: {args.n_action_steps}\n" +
-                f"n_envs: {args.n_envs}\n\n")
-    
+    num_clients = args.num_clients
+    client_id = args.client_id
+
+    # Split episodes across clients
+    per_client = args.n_episodes // num_clients
+    remainder = args.n_episodes % num_clients
+    if client_id < remainder:
+        per_client += 1
+    n_episodes = per_client
+
+    # Only client 0 saves video
+    save_video = (client_id == 0)
+    file_name = args.save_dir if args.save_dir else None
+
+    if num_clients > 1:
+        print(f"\033[36m[Client {client_id}/{num_clients}] episodes={n_episodes}, save_video={save_video}\033[0m")
+
     for current_env in args.env_name:
         task_name = (current_env.split('/')[-1]).split('_')[0]
 
         results = run_gr00t_sim_policy(
             env_name=current_env,
-            n_episodes=args.n_episodes,
+            n_episodes=n_episodes,
             max_episode_steps=args.max_episode_steps,
             model_path=args.model_path,
             policy_client_host=args.policy_client_host,
             policy_client_port=args.policy_client_port,
             n_envs=args.n_envs,
             n_action_steps=args.n_action_steps,
-            file_name=file_name.split('/')[-1].split('.')[0],
+            file_name=file_name,
             gpu_ids=args.gpu_ids,
+            save_video=save_video,
         )
-    
+
+        n_success = int(np.sum(results[1]))
+        n_total = len(results[1])
         sr = np.round(np.mean(results[1]), 3)
         print("results: ", results)
         print("success rate: ", sr)
-        
-        cur_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        with open (file_name, "a") as f:
-            f.write(
-                f"task_name: {task_name}\t"+
-                f"results: {results[1]}\n"+
-                f"finish time: {cur_time}\n"+
-                f"success_rate: {sr}\n"+
-                "============================\n"
-            )
+
+        # Write per-client temp file for shell to aggregate
+        if args.save_dir:
+            os.makedirs(args.save_dir, exist_ok=True)
+            agg_file = os.path.join(args.save_dir, f"_agg_client{client_id}.txt")
+            with open(agg_file, "w") as f:
+                f.write(f"{n_success} {n_total}")
